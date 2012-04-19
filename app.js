@@ -27,8 +27,11 @@ app.configure('development', function(){
   app.use(express.errorHandler());
 });
 
-app.get('/', routes.index);
+//app.get('/', routes.index);
+app.get('/', function(req, res) {
+    res.send('dev');
+});
 
-http.createServer(app).listen(3000);
+http.createServer(app).listen(3002);
 
 console.log("Express server listening on port 3000");
