@@ -34,4 +34,4 @@ app.get('/', function(req, res) {
 
 http.createServer(app).listen(3002);
 
-console.log("Express server listening on port 3000");
+console.log("Express server listening on port 3002");
