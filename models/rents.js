@@ -26,21 +26,25 @@ var Area = new Schema();
 Area.add({
     name       : {type : String, required : true},
     state_name : {type : String, required : true},
-    link       : {type : String, required : true}
+    link       : {type : String, required : true},
+    ah_link    : {type : String}
 });
 
 var Region = new Schema();
 Region.add({
     name      : {type : String, required : true},
     area_name : {type : String, required : true},
-    link      : {type : String, required : true}
+    link      : {type : String, required : true},
+    ah_link   : {type : String}
+    
 });
 
 var NBHood = new Schema();
 NBHood.add({
     name        : {type : String, required : true},
     region_name : {type : String, required : true},
-    link        : {type : String, required : true}
+    //nhcode      : {type : Number, required : true),
+    ah_link     : {type : String, required : true}
 });
 
 var Feature = new Schema();

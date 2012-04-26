@@ -2,42 +2,38 @@
  * Run once to init states and areas collections
  *
  */
-var jsdom        = require("jsdom")
-    , MM         = require('../models/rents.js')
+var request      = require("request")
+    , cheerio    = require("cheerio")
     , async      = require("async") 
-    , js_jq_link = 'http://code.jquery.com/jquery-1.7.1.min.js';
+    , MM         = require('../models/rents.js');
 
-
+var count = 0;
 var q = async.queue(function(task, callback) {
-    jsdom.env(task.link,[js_jq_link],function(errors,window) {
-        console.log('using '+task.link);
-        if (errors) {
-            callback();
+    request(task.link, function (err, resp, body) {
+        var $ = cheerio.load(body);
+        var regs = $('span.sublinks a');
+        var regs_count = regs.length;
+        if (regs_count > 0) {
+            console.log('**** Found '+regs_count+' regs');
+            $.each(regs, function(i) {
+                var region = new MM.Region({
+                    name      : $(this).attr('title'),
+                    area_name : task.name,
+                    link      : task.link+$(this).attr('href')
+                });
+                region.save(function(error, data) { 
+                    regs_count--;
+                    if(regs_count === 0) {
+                        callback();
+                    }
+                });
+            });
         }
         else {
-            var $ = window.$;
-            var regs = $('span.sublinks a');
-            var regs_count = regs.length;
-            if (regs_count > 1) {
-                console.log('**** Found '+regs_count+' regs');
-                $.each(regs, function(i) {
-                    var region = new MM.Region({
-                        name      : $(this).attr('title'),
-                        area_name : task.name,
-                        link      : task.link+$(this).attr('href')
-                    });
-                    region.save(function(error, data) { 
-                        regs_count--;
-                        if(regs_count === 0) {
-                            callback();
-                        }
-                    });
-                });
-            }
             callback();
         }
     });
-}, 10); // 10 at a time
+}, 10); // 5 at a time?
 
 q.drain = function() {
     // we're all done
@@ -57,7 +53,8 @@ function setRegions(err) {
         }
         areas.forEach(function(area) {
             q.push({name: area.name, link: area.link}, function(err) {
-                console.log(area.name+' is done\n'); 
+                count++;
+                console.log(count+' '+area.name+' is done\n'); 
             });
         });
     });
