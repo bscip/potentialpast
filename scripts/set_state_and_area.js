@@ -2,40 +2,38 @@
  * Run once to init states and areas collections
  *
  */
-var jsdom      = require("jsdom")
-    , MM = require('../models/rents.js')
-    , js_jq_link = 'http://code.jquery.com/jquery-1.7.1.min.js';
+var request      = require("request")
+    , cheerio    = require("cheerio")
+    , async      = require("async") 
+    , MM         = require('../models/rents.js');
 
-function setStatesAndAreas() {
-    jsdom.env(
-        "http://www.craigslist.org/about/sites",
-        [js_jq_link],
-        function(errors,window) {
-            if (errors) {
-                console.log(errors);
-            }
-            else {
-                var $ = window.$;
-            }
-            $.each($('a[name="US"]').parents('.colmask').find('.state_delimiter'), 
-                function() {
-                    var state_name = $(this).html();
-                    var state = new MM.State({name: state_name});
-                    state.save(function(error, data) { if (error) console.log('state save error'); });
-                    $.each($(this).next().find('a'),
-                        function() {
-                            var area = new MM.Area({
-                                    name : $(this).html(),
-                                    state_name : state_name,
-                                    link : $(this).attr('href')
-                                });
-                            area.save(function(error, data) { if (error) console.log('area save error'); });
-                        });
+function setStatesAndAreas(cb) {
+    request("http://www.craigslist.org/about/sites", function(err,resp,body) {
+        var $ = cheerio.load(body);
+        $('a[name="US"]').parent().parent().find('.state_delimiter').each( 
+          function() {
+            var state_name = $(this).html();
+            var state = new MM.State({name: state_name});
+            state.save(function(error, data) { 
+                if (error) console.log('state save error'); 
+            });
+            $(this).next().find('a').each(function() {
+                var area = new MM.Area({
+                    name : $(this).html(),
+                    state_name : state_name,
+                    link : $(this).attr('href')
                 });
-            window.close();
-        }
-    );
+                area.save(function(error, data) { 
+                    if (error) console.log('area save error'); 
+                });
+            });
+        });
+    });
+    setTimeout(function(){cb();},5000); // 5 seconds should be plenty
 }
-setStatesAndAreas();
+setStatesAndAreas(function(){
+    MM.mongoose.disconnect();
+    console.log('states and areas set');
+});
 
 
