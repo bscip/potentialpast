@@ -63,10 +63,8 @@ Listing.add({
     },
     features : [],
     cid : {type: Number},
-    cost : {
-        literal : {type : String},
-        numeric : {type : Number, index: true}
-    },
+    cost : {type : Number, index: true},
+    title : {type : String, index: true},
     link : {type: String, required: true},
     date_posted : {type: Date, index: true},
     created : {type: Date, default: Date.now, required: true}
