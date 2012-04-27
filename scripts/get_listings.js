@@ -5,7 +5,8 @@
 var request      = require("request")
     , cheerio    = require("cheerio")
     , async      = require("async") 
-    , MM         = require('../models/rents.js');
+    , MM         = require('../models/rents.js')
+    , DT         = require('../util/date.js');
 
 // opts:
 var argv = require('optimist')
@@ -35,34 +36,69 @@ var nextlvl        = new Array();
 function ah_page_get(page_task,cb) {
     // get cid from link
     var cid = 0;
-    var match = /.*\/(\d+).*/.exec(page_task.link);
-    if (match[1]) {
-        cid = match[1];
+    var cid_match = /.*\/(\d+).*/.exec(page_task.link);
+    if (cid_match) {
+        cid = cid_match[1];
     }
+    else {
+        // can't find cid?  ditch out
+        cb();
+    }
+    var existing_listing = MM.Listing.findOne({cid: cid}, function(err,found) {
+        if (found) {
+            // we've seen this listing before, ditch out
+            cb();
+        }
+    });
     request(page_task.link,function(err,resp,body) {
         var $ = cheerio.load(body);
         var title = $('body h2').html();
-        var match = /\$(\d+).*/.exec(title);
+        var cost_match = /^\$(\d+).*/.exec(title);
         var cost = 0;
-        // need br count!!!
-        if (match[1]) {
-            cost = match[1];
+        if (cost_match) {
+            cost = cost_match[1];
         }
-        // should decide whether to keep or not based on cost and br count
-        //      if keeping, set place {} and features[]
-        //
-        // need to try load before save ... mongoose create?
+        else {
+            // can't find a price, ditch it
+            cb();
+        }
+        var br_match = /.*?(\d+)br.*/.exec(title.toLowerCase());
+        if (br_match) {
+            var br = br_match[1];
+        }
+        else {
+            br_match = /.*?(studio).*/.exec(title.toLowerCase());
+            if (br_match) {
+                var br = 0;// studio
+            }
+            else {
+                // can't find a br count, ditch it
+                cb();
+            }
+        }
+        var date_match = /.*?Date:\s+(\d{4}-\d{2}-\d{2},\s+\d+:\d+\w{2}\s+\w{3}).*?/.exec(body);
+        if (date_match) {
+            var date_posted = DT.parse_rent_date(date_match[1]);
+        }
+        else {
+            // no date!?, ditch it
+            cb();
+        }
+
         var listing = new MM.Listing({
-            place : {},
-            features : []
-            cid :
-            cost :
-            title :
-            link :
-            date_posted : 
+            place : page_task.place,
+            features : [{br: br}],
+            cid : cid,
+            cost : cost,
+            title : title,
+            link : page_task.link,
+            date_posted : date_posted,
             created : Date.now()
-
-
+        });
+        listing.save(function(err,data) {
+            // ok, saved new listing, lets ditch out
+            // log here?
+            cb();
         });
     });
 }
@@ -101,7 +137,10 @@ function ah_list_get(list_task, cb) {
         $('p a').each(function() {
             if ($(this).attr('href').length > 20) {
                 page_count--;
-                // create obj w/ enough info to create a listing
+                var page = {};
+                page.link = $(this).attr('href');
+                page.place = list_task.place;
+                
                 q_page.push(blah,function(err) {
                     // log here?
                 });
@@ -133,10 +172,9 @@ function ah_set(type,prev_type,prev_names,name) {
                     //push to queue
                     var ah_task = {};
                     for (var i=0; i<prev_names.length; i++) {
-                       ah_task.place[names_list[i]] = prev_names[i]; 
+                       ah_task.place[name_list[i]] = prev_names[i]; 
                     }
                     ah_task.link = obj.ah_link;
-                    ah_task.ah_link = obj.ah_link;
                     q_list.push(ah_task, function(err) {
                         //log here
                     });
