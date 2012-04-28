@@ -1,5 +1,5 @@
 /*
- * Run once to init states and regions collections
+ * Run once to init areas and regions collections
  *
  */
 var request      = require("request")
@@ -7,7 +7,7 @@ var request      = require("request")
     , async      = require("async") 
     , MM         = require('../models/rents.js');
 
-var count = 0;
+var can_drain = false;
 var q = async.queue(function(task, callback) {
     request(task.link, function (err, resp, body) {
         var $ = cheerio.load(body);
@@ -23,8 +23,10 @@ var q = async.queue(function(task, callback) {
 
 q.drain = function() {
     // we're all done
-    MM.mongoose.disconnect();
-    console.log('Worked!?');
+    if (can_drain) {
+        MM.mongoose.disconnect();
+        console.log('Queue is done');
+    }
 }
 
 function setAHLink(error) {
@@ -37,6 +39,7 @@ function setAHLink(error) {
                 }
                 var region_count = regions.length;
                 var areas_with_regions = new Array();
+                console.log('Found '+region_count+' regions to check');
                 regions.forEach(function(region) {
                     areas_with_regions.push(region.area_name);
                     q.push(region, function(err) {
@@ -48,23 +51,26 @@ function setAHLink(error) {
                 });
             });
         },
-        function(areas_with_regions,callback) {
-            MM.Area.find({}).where('name').nin(areas_with_regions, function(err,areas) {
+        function(areas_with_regions,cb2) {
+            MM.Area.where('name').nin(areas_with_regions).run(function(err,areas) {
                 if (!areas || areas.length === 0) {
                     console.log('no areas');
                     error();
                 }
-                console.log('Found '+areas.length+' areas to check');
+                var area_count = areas.length;
+                console.log('Found '+area_count+' areas to check');
                 areas.forEach(function(area) {
                     q.push(area, function(err) {
-                        count++;
-                        console.log(count+' '+area.name+' is done\n'); 
+                        area_count--;
+                        if (area_count === 0) {
+                            cb2(null,'');
+                        }
                     });
                 });
             });
         }],
         function (error, result) {
-           console.log('waterfall done!?'); 
+           can_drain = true;
         }
     );
 }

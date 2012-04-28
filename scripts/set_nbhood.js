@@ -9,6 +9,8 @@ var request      = require("request")
 
 var count = 0;
 var q = async.queue(function(task, callback) {
+
+    console.log('opening '+task.name);
     request(task.link, function (err, resp, body) {
         console.log('inside '+task.link);
         var $ = cheerio.load(body);
@@ -21,13 +23,11 @@ var q = async.queue(function(task, callback) {
             var hood_link = rpieces[2]+'/search/'+rpieces[4]+'/'+rpieces[3];
             hood_link += '?query=&srchType=A&minAsk=&maxAsk=&bedrooms=&nh=';
             $.each(hoods, function(i) {
-                console.log(hood_link);
                 var nbhood = new MM.NBHood({
                     name        : $(this).html(),
                     region_name : task.name,
                     ah_link     : hood_link+$(this).attr('value')
                 });
-                console.log(nbhood);
                 nbhood.save(function(error, data) { 
                     hoods_count--;
                     if(hoods_count === 0) {
@@ -41,7 +41,7 @@ var q = async.queue(function(task, callback) {
             callback();
         }
     });
-}, 5); // 5 at a time?
+}, 10); // 5 at a time?
 
 q.drain = function() {
     // we're all done

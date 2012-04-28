@@ -26,6 +26,7 @@ var utcoffsets = new Array();
 
 var DT = {}
 module.exports = DT;
+DT.moment = moment;
 
 DT.parse_rent_date = function(date) {
     var m = /(\d{4})-(\d{2})-(\d{2}),\s+(\d+):(\d+)(\w{2})\s+(\w{3})/.exec(date);
@@ -38,3 +39,4 @@ DT.parse_rent_date = function(date) {
         df += ' Z';
     return moment(dstr,df).format();
 };
+
