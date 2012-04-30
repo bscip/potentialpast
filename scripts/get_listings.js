@@ -16,11 +16,12 @@ var argv = require('optimist')
 
 // log:
 var fdt     = DT.moment(new Date()).format('YYYY-MM-DD');
-var logpath = '../logs/listings/'+fdt+'_'+argv.type+'_';
-    logpath += argv.name.replace(/\s/g,'').toLowerCase()+'.log';
+var logpath = '/var/www/pp/logs/listings/'+argv.type+'_';
+    logpath += argv.name.replace(/\s/g,'').toLowerCase()+'_'+fdt+'.log';
     console.log('logging to: '+logpath);
 var winston = require("winston");
     winston.add(winston.transports.File, { filename: logpath });
+    winston.remove(winston.transports.Console);
 
 var name_list      = ['state_name','area_name','region_name','nbhood_name'];
 var nextlvl        = new Array();
@@ -101,7 +102,6 @@ function ah_page_get(page_task,cb) {
         var listing = new MM.Listing(listing_info);
         listing.save(function(err,data) {
             // ok, saved new listing, lets ditch out
-            // log here?
             winston.info({listing: listing_info});
             cb();
         });
@@ -117,7 +117,11 @@ q_page.drain = function() {
 }
 
 function ah_list_get(list_task, cb) {
-    if (typeof(list_task.link) === 'undefined') cb();
+    if (typeof(list_task.link) === 'undefined') {
+        console.log('UNDEFINED LINK:  ');
+        console.log(list_task);
+        cb();
+    }
     if (!/^http.*/.exec(list_task.link.toLowerCase())) {
         list_task.link = 'http://'+list_task.link;
     }
@@ -126,25 +130,28 @@ function ah_list_get(list_task, cb) {
         // look for additional pages
         // if found, queue them up
         if ($('.ban span').size() === 0) {
-            //standard page
+            // standard page
             // just grab next 10 until figure something else out
+            var new_link = list_task.link;
             for (var i=1; i<=10; i++) {
-                list_task.link = list_task.link+'index'+i+'00.html';
-                q_list.push(list_task,function(err) {
-                    // log here?
-                    console.log('list push '+list_task.link);
-                    //winston.info({list_task: list_task});
+                var new_list_task = {};
+                new_list_task.place = list_task.place;
+                new_list_task.link = new_link+'index'+i+'00.html';
+                q_list.push(new_list_task,function(err) {
+                    winston.info({list_task: new_list_task});
                 });
             }
         }
         else {
             //nbhood page w/ 1,2,3 links
-            list_task.link = $('h4 a b').parent().attr('href');
-            q_list.push(list_task,function(err) {
-                // log here?
-                console.log('list push '+list_task.link);
-                //winston.info({list_task: list_task});
-            });
+            if (/^Next.*/.exec($('h4 a b').parent().attr('href'))) {
+                var new_list_task = {};
+                new_list_task.place = list_task.place;
+                new_list_task.link = $('h4 a b').parent().attr('href');
+                q_list.push(new_list_task,function(err) {
+                    winston.info({list_task: new_list_task});
+                });
+            }
         }
         // then move on to queueing up pages for current list
         var page_count = $('p a').size() - 1;
@@ -156,9 +163,7 @@ function ah_list_get(list_task, cb) {
                 page.place = list_task.place;
                 
                 q_page.push(page,function(err) {
-                    // log here?
-                    console.log('page push '+page.link);
-                    //winston.info({page_task: page});
+                    winston.info({page_task: page});
                 });
                 if (page_count === 0) {
                     cb();
@@ -189,7 +194,6 @@ function ah_set(type,prev_type,prev_names,name) {
         var ct = objs.length;
         var cur_names = new Array();
         objs.forEach(function(obj) {
-            console.log(obj.name);
             prev_names[prev_names_index[type]] = obj.name;
             if (obj.ah_link) {
                 //push to queue
@@ -200,13 +204,15 @@ function ah_set(type,prev_type,prev_names,name) {
                 }
                 ah_task.link = obj.ah_link;
                 q_list.push(ah_task, function(err) {
-                    console.log('list push '+ah_task.link);
-                    //winston.info({list_task: ah_task});
+                    winston.info({list_task: ah_task});
                 });
             }
             else {
                 if (nextlvl[type]) {
                     ah_set(nextlvl[type],type,prev_names.slice(),obj.name);
+                }
+                else {
+                    console.log('Done pulling records for list queue');
                 }
             }
         });

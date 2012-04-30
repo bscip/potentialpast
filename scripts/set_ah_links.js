@@ -15,6 +15,9 @@ var q = async.queue(function(task, callback) {
         if (ah.length > 5) {
             ah = 'aap/'; 
         }
+        if (task.link.slice(-1) != '/') {
+            ah = '/'+ah;
+        }
         task.ah_link = task.link+ah;
         task.save();
         callback();
