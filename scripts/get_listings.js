@@ -29,6 +29,7 @@ var nextlvl        = new Array();
     nextlvl.area   = 'region';
     nextlvl.region = 'NBHood';
 
+var page_tasks = [];
 
 function ah_page_get(page_task,cb) {
     // get cid from link
@@ -129,53 +130,81 @@ function ah_list_get(list_task, cb) {
         var $ = cheerio.load(body);
         // look for additional pages
         // if found, queue them up
-        if ($('.ban span').size() === 0) {
-            // standard page
-            // just grab next 10 until figure something else out
-            var new_link = list_task.link;
-            for (var i=1; i<=10; i++) {
-                var new_list_task = {};
-                new_list_task.place = list_task.place;
-                new_list_task.link = new_link+'index'+i+'00.html';
-                q_list.push(new_list_task,function(err) {
-                    winston.info({list_task: new_list_task});
-                });
+        if (list_task.paginate) {
+            if ($('#messages').children().size() > 0) {
+                // standard page
+                // just grab next 10 until figure something else out
+                var new_link = list_task.link;
+                for (var i=1; i<=10; i++) {
+                    var new_list_task = {};
+                    new_list_task.place = list_task.place;
+                    new_list_task.link = new_link+'index'+i+'00.html';
+                    new_list_task.paginate = false;
+console.log("QPUSH P:  "+new_list_task.link);
+                    q_list.push(new_list_task,function(err) {
+                        winston.info({list_task: new_list_task});
+                    });
+                }
             }
-        }
-        else {
-            //nbhood page w/ 1,2,3 links
-            if (/^Next.*/.exec($('h4 a b').parent().attr('href'))) {
-                var new_list_task = {};
-                new_list_task.place = list_task.place;
-                new_list_task.link = $('h4 a b').parent().attr('href');
-                q_list.push(new_list_task,function(err) {
-                    winston.info({list_task: new_list_task});
-                });
+            else {
+                //nbhood page w/ 1,2,3 links
+                if ($('h4 a b').size() > 0) {
+                    new_task_links = [];
+                    $('h4 a').each(function() {
+                        if (/\d/.exec($(this).html())) {
+                            new_task_links[$(this).html()] = $(this).attr('href');
+                        }
+                    });
+                    new_task_links.forEach(function(new_link) {
+                        var new_list_task = {};
+                        new_list_task.place = list_task.place;
+                        new_list_task.link = new_link;
+                        new_list_task.paginate = false;
+console.log("QPUSH P:  "+new_list_task.link);
+                        q_list.push(new_list_task,function(err) {
+                            winston.info({list_task: new_list_task});
+                        });
+                    });
+                }
             }
         }
         // then move on to queueing up pages for current list
-        var page_count = $('p a').size() - 1;
-        $('p a').each(function() {
+        var page_count = 0;
+        $('blockquote p a').each(function() {
             if ($(this).attr('href').length > 20) {
-                page_count--;
-                var page = {};
-                page.link = $(this).attr('href');
-                page.place = list_task.place;
-                
-                q_page.push(page,function(err) {
-                    winston.info({page_task: page});
-                });
-                if (page_count === 0) {
-                    cb();
-                }
+                page_count++;
             }
         });
+        if (page_count > 0) {
+            $('blockquote p a').each(function() {
+                if ($(this).attr('href').length > 20) {
+                    page_count--;
+                    var page = {};
+                    page.link = $(this).attr('href');
+                    page.place = list_task.place;
+                    page_tasks.push(page);
+                    /*
+                    q_page.push(page,function(err) {
+                        winston.info({page_task: page});
+                    });
+                    */
+                    if (page_count === 0) {
+                        cb();
+                    }
+                }
+            });
+        }
+        else {
+            cb();
+        }
     });
 }
 
 
-var q_list = async.queue(ah_list_get, 5); // 5 at a time?
+var q_list = async.queue(ah_list_get, 2); // 5 at a time?
 q_list.drain = function() {
+    q_page.push(page_tasks,function(err) {
+    });
     console.log('Finished with list queue');
 }
 
@@ -193,7 +222,9 @@ function ah_set(type,prev_type,prev_names,name) {
         }
         var ct = objs.length;
         var cur_names = new Array();
+        var obj_count = objs.length;
         objs.forEach(function(obj) {
+            obj_count--;
             prev_names[prev_names_index[type]] = obj.name;
             if (obj.ah_link) {
                 //push to queue
@@ -203,17 +234,23 @@ function ah_set(type,prev_type,prev_names,name) {
                    ah_task.place[name_list[i]] = prev_names[i]; 
                 }
                 ah_task.link = obj.ah_link;
+                ah_task.paginate = true;
+                    console.log("QPUSH:  "+obj.ah_link);
                 q_list.push(ah_task, function(err) {
                     winston.info({list_task: ah_task});
                 });
             }
             else {
                 if (nextlvl[type]) {
+                    console.log("NEXT LVL:  "+nextlvl[type]);
                     ah_set(nextlvl[type],type,prev_names.slice(),obj.name);
                 }
                 else {
                     console.log('Done pulling records for list queue');
                 }
+            }
+            if (obj_count === 0) {
+                console.log('Done pulling records for list queue for level = '+type);
             }
         });
     });
