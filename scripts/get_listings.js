@@ -29,7 +29,9 @@ var nextlvl        = new Array();
     nextlvl.area   = 'region';
     nextlvl.region = 'NBHood';
 
-var page_tasks = [];
+var page_tasks      = [];
+var total_pages     = 0;
+var pages_processed = 0;
 
 function ah_page_get(page_task,cb) {
     // get cid from link
@@ -43,69 +45,77 @@ function ah_page_get(page_task,cb) {
         winston.info({listing_no_cid: page_task.link});
         cb();
     }
-    var existing_listing = MM.Listing.findOne({cid: cid}, function(err,found) {
-        if (found) {
-            // we've seen this listing before, ditch out
-            cb();
-        }
-    });
-    if (!/^http.*/.exec(page_task.link.toLowerCase())) {
-        page_task.link = 'http://'+page_task.link;
+    if (cid === 0) {
+        cb();
     }
-    request(page_task.link,function(err,resp,body) {
-        var $          = cheerio.load(body);
-        var title      = $('body h2').html();
-        var cost_match = /^\$(\d+).*/.exec(title);
-        var cost       = 0;
-        if (cost_match) {
-            cost = cost_match[1];
-        }
-        else {
-            // can't find a price, ditch it
-            winston.info({listing_no_cost: page_task.link});
-            cb();
-        }
-        var br_match = /.*?(\d+)br.*/.exec(title.toLowerCase());
-        if (br_match) {
-            var br = br_match[1];
-        }
-        else {
-            br_match = /.*?(studio).*/.exec(title.toLowerCase());
-            if (br_match) {
-                var br = 0;// studio
+    MM.Listing.findOne({cid: cid}, function(err,found) {
+        if (!found) {
+            if (!/^http.*/.exec(page_task.link.toLowerCase())) {
+                page_task.link = 'http://'+page_task.link;
             }
-            else {
-                // can't find a br count, ditch it
-                winston.info({listing_no_br: page_task.link});
-                cb();
-            }
-        }
-        var date_match = /.*?Date:\s+(\d{4}-\d{2}-\d{2},\s+\d+:\d+\w{2}\s+\w{3}).*?/.exec(body);
-        if (date_match) {
-            var date_posted = DT.parse_rent_date(date_match[1]);
-        }
-        else {
-            // no date!?, ditch it
-            winston.info({listing_no_date: page_task.link});
-            cb();
-        }
+            request(page_task.link,function(err,resp,body) {
+                var $          = cheerio.load(body);
+                var title      = $('body h2').html();
+                if (!title || typeof(title) == 'undefined') {
+                    title = '';
+                }
+                var cost_match = /^\$(\d+).*/.exec(title);
+                var cost       = 0;
+                if (cost_match) {
+                    cost = cost_match[1];
+                }
+                else {
+                    // can't find a price, ditch it
+                    winston.info({listing_no_cost: page_task.link});
+                    cb();
+                }
+                var br_match = /.*?(\d+)br.*/.exec(title.toLowerCase());
+                if (br_match) {
+                    var br = br_match[1];
+                }
+                else {
+                    br_match = /.*?(studio).*/.exec(title.toLowerCase());
+                    if (br_match) {
+                        var br = 0;// studio
+                    }
+                    else {
+                        // can't find a br count, ditch it
+                        winston.info({listing_no_br: page_task.link});
+                        cb();
+                    }
+                }
+                var date_match = /.*?Date:\s+(\d{4}-\d{2}-\d{2},\s+\d+:\d+\w{2}\s+\w{3}).*?/.exec(body);
+                if (date_match) {
+                    var date_posted = DT.parse_rent_date(date_match[1]);
+                }
+                else {
+                    // no date!?, ditch it
+                    winston.info({listing_no_date: page_task.link});
+                    cb();
+                }
 
-        var listing_info = {
-            place       : page_task.place,
-            features    : [{br : br}],
-            cid         : cid,
-            cost        : cost,
-            title       : title,
-            link        : page_task.link,
-            date_posted : date_posted,
-            created     : Date.now()
-        };
-        var listing = new MM.Listing(listing_info);
-        listing.save(function(err,data) {
-            // ok, saved new listing, lets ditch out
-            winston.info({listing: listing_info});
+                var listing_info = {
+                    place       : page_task.place,
+                    features    : [{br : br}],
+                    cid         : cid,
+                    cost        : cost,
+                    title       : title,
+                    link        : page_task.link,
+                    date_posted : date_posted,
+                    created     : Date.now()
+                };
+                var listing = new MM.Listing(listing_info);
+                listing.save(function(err,data) {
+                    // ok, saved new listing, lets ditch out
+                    listing_info.date = DT.moment().format();
+                    winston.info({listing: listing_info});
+                    cb();
+                });
+            });
+        }
+        else {
             cb();
-        });
+        }
     });
 }
 
@@ -142,6 +152,7 @@ function ah_list_get(list_task, cb) {
                     new_list_task.paginate = false;
 console.log("QPUSH P:  "+new_list_task.link);
                     q_list.push(new_list_task,function(err) {
+                        new_list_task.date = DT.moment().format();
                         winston.info({list_task: new_list_task});
                     });
                 }
@@ -162,6 +173,7 @@ console.log("QPUSH P:  "+new_list_task.link);
                         new_list_task.paginate = false;
 console.log("QPUSH P:  "+new_list_task.link);
                         q_list.push(new_list_task,function(err) {
+                            new_list_task.date = DT.moment().format();
                             winston.info({list_task: new_list_task});
                         });
                     });
@@ -203,7 +215,13 @@ console.log("QPUSH P:  "+new_list_task.link);
 
 var q_list = async.queue(ah_list_get, 2); // 5 at a time?
 q_list.drain = function() {
+    total_pages = page_tasks.length;
     q_page.push(page_tasks,function(err) {
+        pages_processed++;
+        if (Math.round((pages_processed/total_pages)*1000)%10 === 0
+           && Math.round((pages_processed/total_pages)*100) < 100) {
+            console.log(Math.round((pages_processed/total_pages)*100)+'% Complete ...');
+        }
     });
     console.log('Finished with list queue');
 }
@@ -237,6 +255,7 @@ function ah_set(type,prev_type,prev_names,name) {
                 ah_task.paginate = true;
                     console.log("QPUSH:  "+obj.ah_link);
                 q_list.push(ah_task, function(err) {
+                    ah_task.date = DT.moment().format();
                     winston.info({list_task: ah_task});
                 });
             }
