@@ -56,16 +56,16 @@ Feature.add({
 var Listing = new Schema();
 Listing.add({
     place : {
-        state_name  : {type : String},
-        area_name   : {type : String},
-        region_name : {type : String},
+        state_name  : {type : String, index: true},
+        area_name   : {type : String, index: true},
+        region_name : {type : String, index: true},
         nbhood_name : {type : String}
     },
     features : [],
-    cid : {type: Number},
-    cost : {type : Number, index: true},
-    title : {type : String, index: true},
-    link : {type: String, required: true},
+    cid : {type: Number, index: true},
+    cost : {type : Number},
+    title : {type : String},
+    link : {type: String},
     date_posted : {type: Date, index: true},
     created : {type: Date, default: Date.now, required: true}
 });
